@@ -2,10 +2,10 @@ task, SUMMARY_FILE = "summarize file data/history.json", "../data/prize_summary.
 
 tests = [
     ("summarize file data/prize.json", "../data/prize_summary.txt"),
-    # ("pick any number between 1 and 100", "../data/42.txt"),
-    # ("summarize file data/food_facts.json", "../data/food_facts.txt"),
-    # ("summarize file data/laureate.json", "../data/laureate.txt"),
-    # ("summarize file data/history.json", "../data/history.txt"),
+    ("pick any number between 1 and 100", "../data/42.txt"),
+    ("summarize file data/food_facts.json", "../data/food_facts.txt"),
+    ("summarize file data/laureate.json", "../data/laureate.txt"),
+    ("summarize file data/history.json", "../data/history.txt"),
 ]
 
 

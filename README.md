@@ -82,8 +82,12 @@ This requires a reference summary file (configured via `SUMMARY_FILE` in `src/co
 Run the full test suite and aggregate results:
 
 ```bash
+# From project root (recommended)
+PYTHONPATH=$(pwd):$PYTHONPATH uv run python benchmarks/aggregate_scores.py
+
+# Or if running from benchmarks directory
 cd benchmarks
-python aggregate_scores.py
+PYTHONPATH=..:$PYTHONPATH uv run python aggregate_scores.py
 ```
 
 This script:
@@ -147,9 +151,52 @@ main_toon_agent: tests=1 | avg_f1=0.852 | avg_duration=3.245s | total_duration=3
 - **Reasonable token usage**: Efficient use of LLM calls without excessive retries
 
 **Trade-offs to consider**:
-- More sophisticated agents (like `main_toon_agent`) may achieve higher quality (F1) but consume more tokens
-- Simpler agents may be faster but produce less accurate summaries
-- The "best" agent depends on your priorities: accuracy, speed, or cost efficiency
+- **Accuracy vs. Efficiency**: `main` achieves higher F1 scores but consumes 30x more tokens than `main_toon_agent`
+- **Token Efficiency**: `main_toon_agent` uses specialized fact sheet generation, dramatically reducing token usage while maintaining reasonable quality
+- **Speed**: All agents have similar execution times, so token efficiency is the primary cost differentiator
+- The "best" agent depends on your priorities: accuracy (F1), speed, or cost efficiency (tokens)
+
+## Benchmark Results
+
+### Aggregated Scores (5 Test Cases)
+
+| Agent | Tests | Avg F1 | Avg Duration | Total Duration | Avg Tokens | Total Tokens |
+|-------|-------|--------|--------------|---------------|------------|--------------|
+| `main` | 5 | 0.423 | 7.392s | 36.962s | 62,915.6 | 314,578 |
+| `main_toon` | 5 | 0.322 | 6.801s | 34.006s | 52,844.2 | 264,221 |
+| `main_toon_agent` | 5 | 0.315 | 6.856s | 34.282s | 2,006.6 | 10,033 |
+
+**Key Observations**:
+- **`main`** achieves the highest average F1 score (0.423) but consumes significantly more tokens (~31x more than `main_toon_agent`)
+- **`main_toon_agent`** is the most token-efficient, using only ~2,000 tokens per test on average (97% reduction vs `main`)
+- **`main_toon`** has the fastest average duration (6.801s) but still consumes high token counts
+- All agents have similar execution times (6.8-7.4s average), suggesting token efficiency is the primary differentiator
+
+### Per-Task Breakdown
+
+| Task | Agent | F1 Score | Duration | Total Tokens |
+|------|-------|----------|----------|--------------|
+| **summarize file data/prize.json** | `main` | 0.545 | 8.041s | 64,741 |
+| | `main_toon_agent` | 0.432 | 9.099s | 2,398 |
+| | `main_toon` | 0.368 | 9.230s | 62,138 |
+| **pick any number between 1 and 100** | `main_toon_agent` | 0.333 | 1.600s | 441 |
+| | `main` | 0.185 | 2.078s | 3,227 |
+| | `main_toon` | 0.179 | 2.167s | 752 |
+| **summarize file data/food_facts.json** | `main` | 0.534 | 8.253s | 22,939 |
+| | `main_toon` | 0.437 | 8.279s | 20,034 |
+| | `main_toon_agent` | 0.229 | 7.915s | 2,538 |
+| **summarize file data/laureate.json** | `main` | 0.419 | 10.094s | 153,047 |
+| | `main_toon` | 0.405 | 10.144s | 179,484 |
+| | `main_toon_agent` | 0.307 | 7.344s | 2,610 |
+| **summarize file data/history.json** | `main` | 0.431 | 8.496s | 70,624 |
+| | `main_toon_agent` | 0.276 | 8.323s | 2,046 |
+| | `main_toon` | 0.220 | 4.186s | 1,813 |
+
+**Task-Specific Insights**:
+- **File summarization tasks**: `main` consistently achieves the highest F1 scores but at a high token cost
+- **Simple tasks** (like picking a number): `main_toon_agent` performs best with minimal token usage
+- **Token efficiency**: `main_toon_agent` uses 10-30x fewer tokens across all file summarization tasks
+- **Performance variance**: F1 scores vary significantly by task, suggesting task-specific optimization may be beneficial
 
 ## Project Structure
 
