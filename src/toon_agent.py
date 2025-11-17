@@ -76,10 +76,10 @@ class ToonAgent:
                 state=state,
                 step_index=step_idx,
             )
-            cumulative_usage.accumulate(metrics.usage)
-            step_metrics.append(metrics)
 
             if isinstance(output, Scratchpad):
+                cumulative_usage.accumulate(metrics.usage)
+                step_metrics.append(metrics)
                 state.append_scratchpad(output)
                 if self._should_stop_after_scratchpad(output):
                     break
@@ -87,7 +87,10 @@ class ToonAgent:
 
             observation = self._execute_action(output)
             if observation.usage is not None:
-                cumulative_usage.accumulate(observation.usage)
+                metrics.usage.accumulate(observation.usage)
+
+            cumulative_usage.accumulate(metrics.usage)
+            step_metrics.append(metrics)
             state.append_action(output, observation)
             if observation.should_stop:
                 break

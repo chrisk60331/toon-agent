@@ -47,31 +47,32 @@ def _build_summary_prompt(
         "Use only the information contained in the fact sheet; do not rely on external knowledge.\n"
         "Copy the template between the delimiter lines EXACTLY. Replace only the bracketed guidance with factual content from the fact sheet. Leave every other character unchanged, including blank lines.\n"
         "<<TEMPLATE>>\n"
-        f"I'll read the file {file_name} for you.\n\n"
-        "Tool #1: file_read\n\n"
+        f"I'll read the file {file_name} for you.\n"
+        "Tool #1: file_read\n"
         f"## Summary of {file_name}\n\n"
-        "[One or two sentences summarising dataset scope, size, and time span.]\n\n"
-        "### Data Structure\n"
-        "- [Bullet 1]\n"
-        "- [Bullet 2]\n"
-        "- [Optional bullet 3]\n"
-        "- [Optional bullet 4]\n"
-        "### Key Fields\n"
-        "- [Bullet 1]\n"
-        "- [Bullet 2]\n"
-        "- [Optional bullet 3]\n"
-        "- [Optional bullet 4]\n"
-        "### Notable Insights\n"
-        "- [Bullet 1]\n"
-        "- [Bullet 2]\n"
-        "- [Optional bullet 3]\n"
-        "- [Optional bullet 4]\n"
-        "### Potential Analyses\n"
-        "- [Optional bullet 1]\n"
-        "- [Optional bullet 2]\n"
+        "[One or two sentences summarizing dataset scope, size, and time span. Include specific numbers, dates, and key facts from the fact sheet.]\n\n"
+        "### **File Structure:**\n"
+        "- [Format and organization details]\n"
+        "- [Total coverage or record count]\n"
+        "### **Data Content:**\n"
+        "[Describe main categories, types, or classifications. Use numbered lists if appropriate, or bullets for key categories.]\n"
+        "### **Key Information per Record:**\n"
+        "- [Field 1]: [Description with specific details]\n"
+        "- [Field 2]: [Description with specific details]\n"
+        "- [Field 3]: [Description if relevant]\n"
+        "- [Field 4]: [Description if relevant]\n"
+        "- [Additional fields as needed]\n"
+        "### **Notable Features:**\n"
+        "- [Feature 1: specific examples, dates, or statistics]\n"
+        "- [Feature 2: specific examples, dates, or statistics]\n"
+        "- [Feature 3: if relevant]\n"
+        "- [Feature 4: if relevant]\n"
+        "\n"
+        "[Optional concluding sentence about the dataset's value or purpose.]\n"
         "<<END TEMPLATE>>\n"
-        "Keep the entire response under 260 tokens. Mention numeric ranges, category lists, or percentages exactly as shown in the fact sheet, and prefer noun phrases over prose inside bullets.\n"
-        "When Notable Insights can reference multi-prize counts, organizational recipients, gender diversity, geographic coverage, or motivation richness, make sure to include those cues.\n"
+        "Extract specific numbers, dates, ranges, percentages, and category names directly from the fact sheet. Use exact values when available.\n"
+        "For Notable Features, prioritize: multi-prize counts, organizational recipients, gender diversity, geographic coverage, time ranges, derived insights, product details, nutritional information, or any other notable patterns mentioned in the fact sheet.\n"
+        "Keep the response comprehensive but concise. Aim for 350-450 tokens. Use bold formatting for section headers as shown in the template.\n"
         "Return only the filled-in template (without the delimiters) and do not add extra commentary.\n"
     )
     return f"{header}\nFACT SHEET:\n{fact_sheet}"
@@ -124,7 +125,12 @@ def summarize_file_contents(
     )
     response = llm_client.generate(
         prompt,
-        system_prompt="You transform fact sheets into structured, factual dataset summaries.",
+        system_prompt=(
+            "You transform fact sheets into structured, factual dataset summaries. "
+            "Extract specific details like numbers, dates, ranges, percentages, and categories from the fact sheet. "
+            "Follow the template format precisely, using bold headers and structured sections. "
+            "Prioritize accuracy and completeness over brevity."
+        ),
     )
     summary = response.content.strip()
     if not summary:
@@ -177,7 +183,7 @@ def run_main_toon_agent() -> AgentRunSummary:
     llm = Boto3AnthropicClient(
         client=bedrock_runtime,
         model_id=model_id,
-        max_tokens=512,
+        max_tokens=1024,
         temperature=0.0,
     )
     tool = ToolSpec(
