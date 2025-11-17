@@ -1,0 +1,21 @@
+## Summary of `data/history.json`
+
+**File Size:** Approximately 3,098 events
+
+**Content Type:** Historical events database
+
+**Data Structure:** The file contains JSON data with the following fields for each event:
+- **date**: Event date (formatted as YYYY/MM/DD)
+- **description**: Detailed description of the historical event
+- **lang**: Language code (appears to be "en" for English)
+- **category1**: Month or category classification (e.g., "January", "December", "Date unknown")
+- **granularity**: Time granularity level (appears to be "year")
+
+**Time Period Covered:** Starts from 1990 (at least from the sample shown)
+
+**Sample Events Include:**
+- 1990/12/31 - Garry Kasparov winning the World Chess Championship
+- 1990/12/31 - Decriminalization of homosexual acts in Queensland
+- 1991/01/02 onwards - Various international political and military events from early 1991 (El Salvador, UN actions, Georgia, Guatemala, Haiti, Iraq-Kuwait situation, South Africa)
+
+The file appears to be a comprehensive historical events database with 3,098 individual events, likely spanning multiple years and covering global news, politics, military actions, and significant historical moments

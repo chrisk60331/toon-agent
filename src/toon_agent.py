@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence
 
@@ -153,10 +152,19 @@ class ToonAgent:
                 error_message = f"{type(err).__name__}: {err}"
                 validation_errors.append(error_message)
 
-        print("Validator errors:", validation_errors)
-        print("Raw LLM outputs:", raw_contents)
+        error_details = "\n".join(
+            f"Attempt {i+1}: {err}" for i, err in enumerate(validation_errors)
+        )
+        raw_outputs_preview = "\n".join(
+            f"Attempt {i+1} output (first 200 chars): {content[:200]}..."
+            if len(content) > 200
+            else f"Attempt {i+1} output: {content}"
+            for i, content in enumerate(raw_contents)
+        )
         raise RuntimeError(
-            f"Failed to produce a valid output after {self._max_validation_attempts} attempts."
+            f"Failed to produce a valid TOON output after {self._max_validation_attempts} attempts.\n"
+            f"Validation errors:\n{error_details}\n\n"
+            f"Raw LLM outputs:\n{raw_outputs_preview}"
         )
 
     def _render_prompt(
@@ -205,28 +213,25 @@ class ToonAgent:
         return "\n".join(segment for segment in prompt_segments if segment)
 
     def _parse_output(self, content: str) -> Scratchpad | ValidatedAction:
-        data: Dict[str, Any] | None = None
+        # Strip markdown code blocks if present
+        cleaned_content = content.strip()
+        if cleaned_content.startswith("```"):
+            # Remove opening code block (with optional language tag)
+            lines = cleaned_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            # Remove closing code block if present
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned_content = "\n".join(lines).strip()
+        
         try:
-            decoded = decode(content, options=self._decode_options)
-            if isinstance(decoded, dict):
-                data = decoded
-        except ToonDecodeError:
-            pass
-
-        if data is None or (isinstance(data, dict) and "kind" not in data):
-            try:
-                relaxed = DecodeOptions(strict=False)
-                decoded = decode(content, options=relaxed)
-                if isinstance(decoded, dict):
-                    data = decoded
-            except ToonDecodeError:
-                pass
-
-        if data is None or (isinstance(data, dict) and "kind" not in data):
-            data = self._try_parse_json_object(content)
-
-        if not isinstance(data, dict):
-            raise ValueError("LLM output must decode to an object.")
+            decoded = decode(cleaned_content, options=self._decode_options)
+            if not isinstance(decoded, dict):
+                raise ValueError("LLM output must decode to an object.")
+            data = decoded
+        except ToonDecodeError as e:
+            raise ValueError(f"Failed to decode TOON format: {e}") from e
 
         kind = data.get("kind")
         if kind == "scratchpad":
@@ -245,28 +250,6 @@ class ToonAgent:
             "LLM output must set 'kind' to either 'scratchpad' or 'action'. "
             f"Received payload: {data!r}"
         )
-
-    @staticmethod
-    def _try_parse_json_object(content: str) -> Dict[str, Any] | None:
-        try:
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            snippet = content[start : end + 1]
-            try:
-                parsed = json.loads(snippet)
-                if isinstance(parsed, dict):
-                    return parsed
-            except json.JSONDecodeError:
-                return None
-
-        return None
 
     def _format_tools_overview(self) -> str:
         tools_payload: List[Dict[str, Any]] = []
@@ -302,23 +285,13 @@ class ToonAgent:
 
             if kind == "scratchpad":
                 item["summary"] = payload.get("summary", "")
-                plan = payload.get("plan", [])
-                plan_preview = []
-                for step in plan[:2]:
-                    plan_preview.append(
-                        {
-                            "description": step.get("description", ""),
-                            "status": step.get("status", ""),
-                        }
-                    )
-                if len(plan) > 2:
-                    plan_preview.append({"description": "...", "status": "pending"})
-                item["plan_preview"] = plan_preview
-                if payload.get("notes"):
-                    item["notes"] = payload.get("notes")
+                item["plan"] = payload.get("plan", [])
+                notes = payload.get("notes")
+                if notes:
+                    item["notes"] = notes
             elif kind == "action":
                 item["tool"] = payload.get("tool", "")
-                item["input"] = payload.get("input", {})
+                item["input"] = payload.get("input", "")
             else:
                 item["details"] = payload
 
@@ -326,8 +299,10 @@ class ToonAgent:
             if observation:
                 item["observation"] = {
                     "success": observation.get("success", True),
-                    "content_preview": self._truncate(str(observation.get("content", ""))),
+                    "content": observation.get("content", ""),
                 }
+                if observation.get("should_stop"):
+                    item["observation"]["should_stop"] = True
 
             history_items.append(item)
 
@@ -379,12 +354,4 @@ class ToonAgent:
 
         annotation_str = str(annotation)
         return annotation_str.replace("typing.", "")
-
-    @staticmethod
-    def _truncate(value: str, limit: int = 96) -> str:
-        if len(value) <= limit:
-            return value
-        return f"{value[: limit - 3]}..."
-
-
 

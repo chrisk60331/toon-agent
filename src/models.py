@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence
+from typing import Any, Callable, ClassVar, Dict, List, Mapping, Optional, Protocol, Sequence
 
 from pydantic import BaseModel, Field, ValidationError, constr
 from typing_extensions import Literal, runtime_checkable
+from toon import encode
 
 
 
@@ -124,31 +125,74 @@ class AgentState(BaseModel):
     task: str
     history: List[AgentHistoryEntry] = Field(default_factory=list)
 
+    MAX_HISTORY_ITEMS: ClassVar[int] = 3
+    SUMMARY_LIMIT: ClassVar[int] = 160
+    NOTE_LIMIT: ClassVar[int] = 160
+    OBSERVATION_LIMIT: ClassVar[int] = 180
+    PLAN_LIMIT: ClassVar[int] = 2
+    INPUT_LIMIT: ClassVar[int] = 160
+
     def append_scratchpad(self, scratchpad: Scratchpad) -> None:
-        self.history.append(
-            AgentHistoryEntry(
-                kind="scratchpad",
-                payload=scratchpad.model_dump(),
-            )
+        entry = AgentHistoryEntry(
+            kind="scratchpad",
+            payload={
+                "summary": self._clip_text(scratchpad.summary, self.SUMMARY_LIMIT),
+                "plan": self._compress_plan(scratchpad.plan),
+                "notes": (
+                    self._clip_text(scratchpad.notes, self.NOTE_LIMIT)
+                    if scratchpad.notes
+                    else None
+                ),
+            },
         )
+        self.history.append(entry)
 
     def append_action(self, action: ValidatedAction, observation: Observation) -> None:
-        self.history.append(
-            AgentHistoryEntry(
-                kind="action",
-                payload={
-                    "tool": action.tool,
-                    "input": action.input_dict,
-                },
-                observation=observation.model_dump(),
-            )
+        encoded_input = encode(action.input_dict) if action.input_dict else "{}"
+        compressed_input = self._clip_text(encoded_input, self.INPUT_LIMIT)
+        compressed_observation = {
+            "success": observation.success,
+            "content": self._clip_text(observation.content, self.OBSERVATION_LIMIT),
+            "should_stop": observation.should_stop,
+            "full_content": observation.content,
+        }
+        entry = AgentHistoryEntry(
+            kind="action",
+            payload={
+                "tool": action.tool,
+                "input": compressed_input,
+            },
+            observation=compressed_observation,
         )
+        self.history.append(entry)
 
     def prompt_payload(self) -> Dict[str, Any]:
         return {
             "task": self.task,
-            "history": [entry.model_dump() for entry in self.history],
+            "history": [entry.model_dump() for entry in self.history[-self.MAX_HISTORY_ITEMS :]],
         }
+
+    def _clip_text(self, value: Optional[str], limit: int) -> Optional[str]:
+        if value is None:
+            return None
+        if len(value) <= limit:
+            return value
+        if limit <= 3:
+            return value[:limit]
+        return f"{value[: limit - 3]}..."
+
+    def _compress_plan(self, plan: Sequence[PlanStep]) -> List[Dict[str, str]]:
+        preview: List[Dict[str, str]] = []
+        for step in list(plan)[: self.PLAN_LIMIT]:
+            preview.append(
+                {
+                    "description": self._clip_text(step.description, self.SUMMARY_LIMIT // 2) or "",
+                    "status": step.status,
+                }
+            )
+        if len(plan) > self.PLAN_LIMIT:
+            preview.append({"description": "...", "status": "pending"})
+        return preview
 
 
 class AgentRunResult(BaseModel):

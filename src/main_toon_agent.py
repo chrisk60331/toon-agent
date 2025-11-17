@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import boto3
 from pydantic import BaseModel, constr
@@ -22,6 +21,7 @@ from src.toon_agent import (
     ToonAgent,
 )
 from src.constants import task, MODEL_ID
+from src.dataset_fact_sheet import build_fact_sheet
 
 
 class FileSummaryInput(BaseModel):
@@ -36,16 +36,53 @@ class DefaultAnswerRequest(BaseModel):
     task: constr(min_length=1)
 
 
+def _build_summary_prompt(
+    *,
+    file_name: str,
+    task_instruction: str,
+    fact_sheet: str,
+) -> str:
+    header = (
+        f"You are preparing the final answer for the task: {task_instruction}.\n"
+        "Use only the information contained in the fact sheet; do not rely on external knowledge.\n"
+        "Copy the template between the delimiter lines EXACTLY. Replace only the bracketed guidance with factual content from the fact sheet. Leave every other character unchanged, including blank lines.\n"
+        "<<TEMPLATE>>\n"
+        f"I'll read the file {file_name} for you.\n\n"
+        "Tool #1: file_read\n\n"
+        f"## Summary of {file_name}\n\n"
+        "[One or two sentences summarising dataset scope, size, and time span.]\n\n"
+        "### Data Structure\n"
+        "- [Bullet 1]\n"
+        "- [Bullet 2]\n"
+        "- [Optional bullet 3]\n"
+        "- [Optional bullet 4]\n"
+        "### Key Fields\n"
+        "- [Bullet 1]\n"
+        "- [Bullet 2]\n"
+        "- [Optional bullet 3]\n"
+        "- [Optional bullet 4]\n"
+        "### Notable Insights\n"
+        "- [Bullet 1]\n"
+        "- [Bullet 2]\n"
+        "- [Optional bullet 3]\n"
+        "- [Optional bullet 4]\n"
+        "### Potential Analyses\n"
+        "- [Optional bullet 1]\n"
+        "- [Optional bullet 2]\n"
+        "<<END TEMPLATE>>\n"
+        "Keep the entire response under 260 tokens. Mention numeric ranges, category lists, or percentages exactly as shown in the fact sheet, and prefer noun phrases over prose inside bullets.\n"
+        "When Notable Insights can reference multi-prize counts, organizational recipients, gender diversity, geographic coverage, or motivation richness, make sure to include those cues.\n"
+        "Return only the filled-in template (without the delimiters) and do not add extra commentary.\n"
+    )
+    return f"{header}\nFACT SHEET:\n{fact_sheet}"
+
+
 def generate_default_answer(
     llm_client: LLMClientProtocol,
     request: DefaultAnswerRequest,
 ) -> tuple[str, TokenUsage]:
     """Leverage the LLM directly when no tools can satisfy the task."""
-    prompt = (
-        "Respond to the user request using your own knowledge. "
-        "Do not reference unavailable tools.\n"
-        f"Task: {request.task}"
-    )
+    prompt = f"Task: {request.task}\nAnswer directly and concisely using only generally known facts."
     response = llm_client.generate(prompt, system_prompt="You are a helpful assistant.")
     usage = TokenUsage.from_raw(response.usage)
     return response.content.strip(), usage
@@ -58,7 +95,7 @@ def _format_payload_for_llm(raw_payload: object) -> str:
     except Exception:  # pragma: no cover - defensive guard against encoding issues
         encoded = ""
     try:
-        pretty_json = json.dumps(raw_payload, indent=2)
+        pretty_json = json.dumps(raw_payload, separators=(",", ":"))
     except TypeError:
         pretty_json = str(raw_payload)
     if encoded and len(encoded) <= len(pretty_json):
@@ -74,26 +111,20 @@ def summarize_file_contents(
     task_instruction: str,
 ) -> tuple[str, TokenUsage]:
     """Invoke the LLM to summarize structured data in a chat-friendly format."""
-    serialized_payload = _format_payload_for_llm(payload)
     file_name = file_path.name
-    prompt = (
-        "You are a versatile assistant crafting the final response for a user.\n"
-        f"The user's task is: {task_instruction}\n"
-        f"You have already executed tool 'file_read' on '{file_path}'.\n"
-        "Respond directly to the user using the template below so the answer aligns with prior summaries:\n"
-        f"1. Start with: \"I'll read the file {file_name} for you.\"\n"
-        "2. Next line: \"Tool #1: file_read\"\n"
-        f"3. Add the heading '## Summary of {file_name}'\n"
-        "4. Include a short paragraph: \"This JSON file contains detailed product information\n"
-        "5. Produce the following sections using markdown subheadings and bullet lists exactly as titled:\n"
-        "6. Keep the tone concise and factual, avoid speculation, and cap the response to roughly 400 tokens.\n"
-        "7. If any item is unavailable, omit it rather than inventing data.\n"
-        "Ground every statement in the tool output provided below:\n"
-        f"{serialized_payload}"
+    fact_sheet = build_fact_sheet(payload, file_name)
+    if not fact_sheet.strip():
+        serialized_payload = _format_payload_for_llm(payload)
+        fact_sheet = f"FACT SHEET UNAVAILABLE. RAW PAYLOAD PREVIEW:\n{serialized_payload}"
+
+    prompt = _build_summary_prompt(
+        file_name=file_name,
+        task_instruction=task_instruction,
+        fact_sheet=fact_sheet,
     )
     response = llm_client.generate(
         prompt,
-        system_prompt="You turn tool outputs into structured, factual chat responses.",
+        system_prompt="You transform fact sheets into structured, factual dataset summaries.",
     )
     summary = response.content.strip()
     if not summary:
@@ -146,12 +177,12 @@ def run_main_toon_agent() -> AgentRunSummary:
     llm = Boto3AnthropicClient(
         client=bedrock_runtime,
         model_id=model_id,
-        max_tokens=1024,
+        max_tokens=512,
         temperature=0.0,
     )
     tool = ToolSpec(
         name="file_summary",
-        description="Parse a JSON file and generate a concise product summary.",
+        description="Summarize structured JSON content.",
         input_model=FileSummaryInput,
         handler=build_file_summary_handler(llm, task_instruction=task),
     )
@@ -160,11 +191,10 @@ def run_main_toon_agent() -> AgentRunSummary:
         llm_client=llm,
         tools=[tool],
         system_prompt=(
-            "You are a deterministic planner. Think with scratchpads that match the schema "
-            "and issue tool actions only when you have a complete plan."
+            "Deterministic planner using TOON schema. Work stepwise and call tools only when ready."
         ),
-        max_steps=6,
-        max_validation_attempts=2,
+        max_steps=4,
+        max_validation_attempts=3,
     )
 
     result = agent.run(task)
@@ -175,7 +205,12 @@ def run_main_toon_agent() -> AgentRunSummary:
         None,
     )
     observation_summary = (
-        final_action.observation.get("content") if final_action and final_action.observation else None
+        (
+            final_action.observation.get("full_content")
+            or final_action.observation.get("content")
+        )
+        if final_action and final_action.observation
+        else None
     )
     scratchpad_notes = next(
         (
