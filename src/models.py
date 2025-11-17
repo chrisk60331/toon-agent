@@ -47,6 +47,7 @@ class Observation(BaseModel):
     content: str
     success: bool = True
     should_stop: bool = False
+    usage: TokenUsage | None = None
 
 
 class TokenUsage(BaseModel):

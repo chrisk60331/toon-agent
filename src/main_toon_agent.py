@@ -72,7 +72,7 @@ def summarize_file_contents(
     payload: object,
     file_path: Path,
     task_instruction: str,
-) -> str:
+) -> tuple[str, TokenUsage]:
     """Invoke the LLM to summarize structured data in a chat-friendly format."""
     serialized_payload = _format_payload_for_llm(payload)
     file_name = file_path.name
@@ -98,7 +98,8 @@ def summarize_file_contents(
     summary = response.content.strip()
     if not summary:
         raise ValueError("LLM returned an empty summary.")
-    return summary
+    usage = TokenUsage.from_raw(response.usage)
+    return summary, usage
 
 
 def build_file_summary_handler(
@@ -117,7 +118,7 @@ def build_file_summary_handler(
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Failed to decode JSON at {target_path}") from exc
 
-        summary = summarize_file_contents(
+        summary, usage = summarize_file_contents(
             llm_client=llm_client,
             payload=contents,
             file_path=target_path,
@@ -128,6 +129,7 @@ def build_file_summary_handler(
             content=summary,
             success=True,
             should_stop=True,
+            usage=usage,
         )
 
     return handler

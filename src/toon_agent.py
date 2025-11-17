@@ -87,6 +87,8 @@ class ToonAgent:
                 continue
 
             observation = self._execute_action(output)
+            if observation.usage is not None:
+                cumulative_usage.accumulate(observation.usage)
             state.append_action(output, observation)
             if observation.should_stop:
                 break

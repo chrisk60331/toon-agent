@@ -20,7 +20,7 @@
 - Prompt: `task = "summarize file prize.json"`
 - Observed metrics:
 
-| Approach                                                   | Entrypoint        | F1   | Runtime (s) | Total Tokens |
+| Approach                                                   | Entrypoint        | F1   | Runtime (s) | Total Tokens | 
 |------------------------------------------------------------|-------------------|------|-------------|--------------|
 | Strands agent with built-in file tools                     | `main`            | 0.490| 8.371       | 64,717       |
 | Strands agent with custom Toon file tools                  | `main_toon`       | 0.337| 8.246       | 62,106       |
