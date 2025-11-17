@@ -20,7 +20,7 @@ from toon_agent import (
     LLMClientProtocol,
     ToonAgent,
 )
-from constants import task
+from constants import task, MODEL_ID
 
 
 class FileSummaryInput(BaseModel):
@@ -124,10 +124,7 @@ def run_demo() -> AgentRunSummary:
     bedrock_runtime = (
         boto3.client("bedrock-runtime", region_name=region) if region else boto3.client("bedrock-runtime")
     )
-    model_id = os.environ.get(
-        "TOON_AGENT_MODEL_ID",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    )
+    model_id = MODEL_ID
 
     llm = Boto3AnthropicClient(
         client=bedrock_runtime,

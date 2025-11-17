@@ -31,14 +31,15 @@ class AgentRunSummary(BaseModel):
 
     @staticmethod
     def _extract_total_tokens(usage_obj: Any, usage_dict: Mapping[str, Any]) -> int | None:
-        if "total_tokens" in usage_dict:
-            candidate = usage_dict["total_tokens"]
-            if isinstance(candidate, int):
-                return candidate
-            try:
-                return int(candidate)
-            except (TypeError, ValueError):
-                pass
+        for key in ("total_tokens", "totalTokens"):
+            if key in usage_dict:
+                candidate = usage_dict[key]
+                if isinstance(candidate, int):
+                    return candidate
+                try:
+                    return int(candidate)
+                except (TypeError, ValueError):
+                    continue
 
         if usage_obj is not None:
             candidate = getattr(usage_obj, "total_tokens", None)
@@ -47,7 +48,13 @@ class AgentRunSummary(BaseModel):
             try:
                 return int(candidate)
             except (TypeError, ValueError):
-                return None
+                candidate = getattr(usage_obj, "totalTokens", None)
+                if isinstance(candidate, int):
+                    return candidate
+                try:
+                    return int(candidate)
+                except (TypeError, ValueError):
+                    return None
 
         return None
 

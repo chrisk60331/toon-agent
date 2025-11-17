@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from time import perf_counter
@@ -19,6 +20,12 @@ class BenchmarkResult(BaseModel):
     name: str
     duration_seconds: float
     summary: AgentRunSummary = Field(..., description="Usage metrics emitted by the run.")
+
+
+class BenchmarkScoreResult(BenchmarkResult):
+    """Benchmark result augmented with an F1 score for response quality."""
+
+    f1_score: float = Field(..., ge=0.0, le=1.0)
 
 
 def _run_benchmark(name: str, runner: Callable[[], AgentRunSummary]) -> BenchmarkResult:
@@ -53,6 +60,67 @@ def display_results(results: Iterable[BenchmarkResult]) -> None:
             f"{result.name}: {result.duration_seconds:.3f}s | "
             f"total_tokens={total_tokens} | usage={usage}\n\n"
         )
+
+
+def benchmark_with_score(reference_output: str) -> list[BenchmarkScoreResult]:
+    """Run benchmarks and score their outputs against a reference answer."""
+    if not isinstance(reference_output, str) or not reference_output.strip():
+        raise ValueError("reference_output must be a non-empty string.")
+
+    benchmarks = run_benchmarks()
+    return [
+        BenchmarkScoreResult(
+            name=result.name,
+            duration_seconds=result.duration_seconds,
+            summary=result.summary,
+            f1_score=_f1_score(reference_output, _extract_final_answer(result)),
+        )
+        for result in benchmarks
+    ]
+
+
+def _extract_final_answer(result: BenchmarkResult) -> str:
+    final_answer = result.summary.metadata.get("final_answer")
+    if not isinstance(final_answer, str) or not final_answer.strip():
+        raise ValueError(
+            f"Benchmark '{result.name}' did not record a final_answer in summary metadata."
+        )
+    return final_answer.strip()
+
+
+def _f1_score(reference: str, candidate: str) -> float:
+    reference_tokens = _tokenize(reference)
+    candidate_tokens = _tokenize(candidate)
+
+    if not reference_tokens and not candidate_tokens:
+        return 1.0
+    if not reference_tokens or not candidate_tokens:
+        return 0.0
+
+    reference_counts = Counter(reference_tokens)
+    candidate_counts = Counter(candidate_tokens)
+
+    true_positive = sum(
+        min(candidate_counts[token], reference_counts[token]) for token in candidate_counts
+    )
+    predicted_total = sum(candidate_counts.values())
+    reference_total = sum(reference_counts.values())
+
+    if predicted_total == 0 or reference_total == 0:
+        return 0.0
+
+    precision = true_positive / predicted_total
+    recall = true_positive / reference_total
+    if precision == 0.0 and recall == 0.0:
+        return 0.0
+    return (2 * precision * recall) / (precision + recall)
+
+
+def _tokenize(value: str) -> list[str]:
+    tokens = [part for part in value.lower().split() if part]
+    if not tokens:
+        return []
+    return tokens
 
 
 if __name__ == "__main__":
