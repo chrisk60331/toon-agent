@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from time import perf_counter
 from typing import Callable, Iterable, Sequence
 
@@ -21,7 +23,10 @@ class BenchmarkResult(BaseModel):
 
 def _run_benchmark(name: str, runner: Callable[[], AgentRunSummary]) -> BenchmarkResult:
     start = perf_counter()
-    summary = runner()
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+        summary = runner()
     if summary is None:
         raise RuntimeError(f"Runner '{name}' did not produce a summary.")
 

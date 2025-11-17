@@ -155,22 +155,46 @@ def run_demo() -> AgentRunSummary:
 
     result = agent.run(task)
 
+    history = list(result.state.history)
     final_action = next(
-        (entry for entry in result.state.history if entry.kind in ["action", "thought"]),
+        (entry for entry in reversed(history) if entry.kind == "action"),
         None,
     )
     observation_summary = (
-        final_action.observation["content"] if final_action and final_action.observation else None
+        final_action.observation.get("content") if final_action and final_action.observation else None
     )
+    scratchpad_notes = next(
+        (
+            entry.payload.get("notes")
+            for entry in reversed(history)
+            if entry.kind == "scratchpad" and entry.payload.get("notes")
+        ),
+        None,
+    )
+
     metadata: dict[str, object] = {"task": task}
-    fallback_answer: str | None = None
     fallback_usage: TokenUsage | None = None
+
+    final_answer: str | None = None
+    answer_source = "unknown"
+
     if observation_summary:
+        final_answer = observation_summary.strip()
+        answer_source = "tool"
         metadata["observation_summary"] = observation_summary
+    elif scratchpad_notes:
+        final_answer = scratchpad_notes.strip()
+        answer_source = "scratchpad"
+        metadata["scratchpad_notes"] = scratchpad_notes
     else:
         fallback_request = DefaultAnswerRequest(task=task)
         fallback_answer, fallback_usage = generate_default_answer(llm, fallback_request)
+        final_answer = fallback_answer.strip()
+        answer_source = "fallback"
         metadata["fallback_answer"] = fallback_answer
+
+    metadata["final_answer"] = final_answer
+    metadata["answer_source"] = answer_source
 
     step_summaries = [
         {
@@ -199,12 +223,13 @@ if __name__ == "__main__":
     summary = run_demo()
 
     task = summary.metadata.get("task", "Not specified")
+    final_answer = summary.metadata.get("final_answer")
+    answer_source = summary.metadata.get("answer_source", "unknown")
     print("Task:", task)
 
-    observation = summary.metadata.get("observation_summary")
-    if observation:
-        print("Summary:", observation)
+    if final_answer:
+        print(f"Summary ({answer_source}): {final_answer}")
     else:
-        print("Summary: not available (no action executed).")
+        print("Summary: not available.")
 
     print("Total tokens:", summary.total_tokens)

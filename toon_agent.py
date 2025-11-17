@@ -82,6 +82,8 @@ class ToonAgent:
 
             if isinstance(output, Scratchpad):
                 state.append_scratchpad(output)
+                if self._should_stop_after_scratchpad(output):
+                    break
                 continue
 
             observation = self._execute_action(output)
@@ -102,6 +104,16 @@ class ToonAgent:
             raise ValueError(f"Tool '{action.tool}' is not registered.")
 
         return tool.handler(action.arguments)
+
+    @staticmethod
+    def _should_stop_after_scratchpad(scratchpad: Scratchpad) -> bool:
+        if scratchpad.plan and any(step.status != "done" for step in scratchpad.plan):
+            return False
+
+        if scratchpad.notes and scratchpad.notes.strip():
+            return True
+
+        return False
 
     def _next_validated_output(
         self,
@@ -174,7 +186,9 @@ class ToonAgent:
                 "markdown, or JSON formatting. Emit either a scratchpad or an action that "
                 "conforms to the schemas. Do not include explanations, and do not send "
                 "multiple objects. Use the TOON encoding shown in the examples; do not fall "
-                "back to plain YAML or Markdown."
+                "back to plain YAML or Markdown. If you can complete the task without using "
+                "tools, set every plan step status to 'done' and place the final answer in the "
+                "scratchpad notes."
             ),
         ]
 

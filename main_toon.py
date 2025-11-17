@@ -27,7 +27,6 @@ def run_toon_agent() -> AgentRunSummary:
         tools=[file_read],
     )
     
-
     response = file_agent(task)
     metrics_obj = getattr(response, "metrics", None)
     accumulated = getattr(metrics_obj, "accumulated_usage", None) if metrics_obj is not None else None
