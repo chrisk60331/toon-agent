@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from benchmark import benchmark_with_score
-
-SUMMARY_PATH = Path(__file__).resolve().parent / "prize_summary.txt"
+from src.constants import SUMMARY_FILE
+SUMMARY_PATH = Path(__file__).resolve().parent / SUMMARY_FILE 
 
 
 def main() -> None:

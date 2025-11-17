@@ -8,10 +8,10 @@ from typing import Callable, Iterable, Sequence
 
 from pydantic import BaseModel, Field
 
-from agent_run_summary import AgentRunSummary
+from src.agent_run_summary import AgentRunSummary
 from main import run_default_agent
 from main_toon import run_toon_agent
-from main_toon_agent import run_demo
+from src.main_toon_agent import run_main_toon_agent
 
 
 class BenchmarkResult(BaseModel):
@@ -46,7 +46,7 @@ def run_benchmarks() -> list[BenchmarkResult]:
     runners: Sequence[tuple[str, Callable[[], AgentRunSummary]]] = [
         ("main", run_default_agent),
         ("main_toon", run_toon_agent),
-        ("main_toon_agent", run_demo),
+        ("main_toon_agent", run_main_toon_agent),
     ]
     return [_run_benchmark(name, runner) for name, runner in runners]
 

@@ -4,10 +4,10 @@ from typing import Any, Sequence
 
 from strands import Agent
 from strands.agent.agent_result import AgentResult
+from strands_tools import editor, file_read, file_write
 
-from agent_run_summary import AgentRunSummary
-from toon_tools import file_read
-from constants import MODEL_ID, task
+from src.agent_run_summary import AgentRunSummary
+from src.constants import MODEL_ID, task
 
 # Define a focused system prompt for file operations
 FILE_SYSTEM_PROMPT = """You are a file operations specialist. You help users read, 
@@ -24,14 +24,14 @@ Always specify the full file path in your responses for clarity.
 """
 
 
-def run_toon_agent() -> AgentRunSummary:
-    """Execute the toon-specific agent and capture its usage metrics."""
+def run_default_agent() -> AgentRunSummary:
+    """Execute the baseline strands agent and capture its usage metrics."""
     file_agent = Agent(
         system_prompt=FILE_SYSTEM_PROMPT,
-        tools=[file_read],
+        tools=[file_read, file_write, editor],
         model=MODEL_ID
     )
-    
+
     response = file_agent(task)
     final_answer = _extract_response_text(response)
     metrics_obj = getattr(response, "metrics", None)
@@ -64,5 +64,5 @@ def _extract_response_text(result: AgentResult) -> str:
 
 
 if __name__ == "__main__":
-    summary = run_toon_agent()
+    summary = run_default_agent()
     print(summary.usage or None)

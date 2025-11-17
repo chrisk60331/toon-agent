@@ -3,7 +3,7 @@ from botocore.client import BaseClient
 import json
 
 from typing import Any
-from models import *
+from src.models import *
 
 
 class Boto3AnthropicClient:

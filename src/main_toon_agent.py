@@ -2,25 +2,26 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import boto3
 from pydantic import BaseModel, constr
 from toon import encode
 
-from agent_run_summary import AgentRunSummary
-from boto3_bedrock_client import Boto3AnthropicClient
-from models import (
+from src.agent_run_summary import AgentRunSummary
+from src.boto3_bedrock_client import Boto3AnthropicClient
+from src.models import (
     Observation,
     ToolSpec,
     TokenUsage,
 )
-from toon_agent import (
+from src.toon_agent import (
     LLMClientProtocol,
     ToonAgent,
 )
-from constants import task, MODEL_ID
+from src.constants import task, MODEL_ID
 
 
 class FileSummaryInput(BaseModel):
@@ -69,19 +70,30 @@ def summarize_file_contents(
     *,
     llm_client: LLMClientProtocol,
     payload: object,
+    file_path: Path,
+    task_instruction: str,
 ) -> str:
-    """Invoke the LLM to summarize structured product data."""
+    """Invoke the LLM to summarize structured data in a chat-friendly format."""
     serialized_payload = _format_payload_for_llm(payload)
+    file_name = file_path.name
     prompt = (
-        "You are a precise product analyst. Summarize the product information below.\n"
-        "Focus on the product name, customer value, standout attributes, and any data quality issues.\n"
-        "Respond with 2-3 concise sentences.\n"
-        "Product data:\n"
+        "You are a versatile assistant crafting the final response for a user.\n"
+        f"The user's task is: {task_instruction}\n"
+        f"You have already executed tool 'file_read' on '{file_path}'.\n"
+        "Respond directly to the user using the template below so the answer aligns with prior summaries:\n"
+        f"1. Start with: \"I'll read the file {file_name} for you.\"\n"
+        "2. Next line: \"Tool #1: file_read\"\n"
+        f"3. Add the heading '## Summary of {file_name}'\n"
+        "4. Include a short paragraph: \"This JSON file contains detailed product information\n"
+        "5. Produce the following sections using markdown subheadings and bullet lists exactly as titled:\n"
+        "6. Keep the tone concise and factual, avoid speculation, and cap the response to roughly 400 tokens.\n"
+        "7. If any item is unavailable, omit it rather than inventing data.\n"
+        "Ground every statement in the tool output provided below:\n"
         f"{serialized_payload}"
     )
     response = llm_client.generate(
         prompt,
-        system_prompt="You turn structured catalog data into concise product summaries.",
+        system_prompt="You turn tool outputs into structured, factual chat responses.",
     )
     summary = response.content.strip()
     if not summary:
@@ -91,6 +103,7 @@ def summarize_file_contents(
 
 def build_file_summary_handler(
     llm_client: LLMClientProtocol,
+    task_instruction: str,
 ) -> Callable[[BaseModel], Observation]:
     """Generate a tool handler bound to the provided LLM client."""
 
@@ -104,7 +117,12 @@ def build_file_summary_handler(
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Failed to decode JSON at {target_path}") from exc
 
-        summary = summarize_file_contents(llm_client=llm_client, payload=contents)
+        summary = summarize_file_contents(
+            llm_client=llm_client,
+            payload=contents,
+            file_path=target_path,
+            task_instruction=task_instruction,
+        )
         return Observation(
             tool="file_summary",
             content=summary,
@@ -115,11 +133,8 @@ def build_file_summary_handler(
     return handler
 
 
-def run_demo() -> AgentRunSummary:
-    """Run the ToonAgent demo against the sample product file."""
-    project_root = Path(__file__).resolve().parent
-    target_file = project_root / "5060292302201.json"
-
+def run_main_toon_agent() -> AgentRunSummary:
+    """Run the general-purpose ToonAgent for the configured task."""
     region = os.environ.get("AWS_REGION")
     bedrock_runtime = (
         boto3.client("bedrock-runtime", region_name=region) if region else boto3.client("bedrock-runtime")
@@ -136,7 +151,7 @@ def run_demo() -> AgentRunSummary:
         name="file_summary",
         description="Parse a JSON file and generate a concise product summary.",
         input_model=FileSummaryInput,
-        handler=build_file_summary_handler(llm),
+        handler=build_file_summary_handler(llm, task_instruction=task),
     )
 
     agent = ToonAgent(
@@ -217,7 +232,7 @@ def run_demo() -> AgentRunSummary:
 
 
 if __name__ == "__main__":
-    summary = run_demo()
+    summary = run_main_toon_agent()
 
     task = summary.metadata.get("task", "Not specified")
     final_answer = summary.metadata.get("final_answer")

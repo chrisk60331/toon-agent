@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError, constr
 from typing_extensions import Literal, runtime_checkable
 import toon
 
-from models import *
+from src.models import *
 
 DecodeOptions = toon.DecodeOptions
 ToonDecodeError = toon.ToonDecodeError
