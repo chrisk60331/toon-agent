@@ -1,4 +1,4 @@
-task, SUMMARY_FILE = "pick any number between 1 and 100", "42.txt"
+task, SUMMARY_FILE = "pick any number between 1 and 100", "../data/42.txt"
 task, SUMMARY_FILE = "summarize file data/food_facts.json", "../data/food_facts.txt"
 task, SUMMARY_FILE = "summarize file data/prize.json", "../data/prize_summary.txt"
 

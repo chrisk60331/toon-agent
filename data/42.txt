@@ -1,1 +1,1 @@
-42
+I'll pick the number 42 for you!
